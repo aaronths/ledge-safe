@@ -49,12 +49,15 @@ export default function LocationsScreen() {
     return unsub;
   }, []);
 
-  const handleGoHere = (location: SavedLocation) => {
-    pendingMapTarget.latitude = location.latitude;
-    pendingMapTarget.longitude = location.longitude;
-    pendingMapTarget.name = location.name;
-    pendingMapTarget.pending = true;
-    router.push("/(tabs)/map");
+  const handleViewConditions = (location: SavedLocation) => {
+    router.push({
+      pathname: "/marine",
+      params: {
+        lat: String(location.latitude),
+        lng: String(location.longitude),
+        name: location.name,
+      },
+    });
   };
 
   const handleUnsave = (location: SavedLocation) => {
@@ -256,7 +259,7 @@ export default function LocationsScreen() {
                 }}
               >
                 <Pressable
-                  onPress={() => handleGoHere(loc)}
+                  onPress={() => handleViewConditions(loc)}
                   style={({ pressed }) => ({
                     paddingVertical: 12,
                     paddingHorizontal: 20,
@@ -272,7 +275,7 @@ export default function LocationsScreen() {
                       flexWrap: "nowrap",
                     }}
                   >
-                    <Ionicons name="navigate" size={17} color="#c9a84c" />
+                    <Ionicons name="water" size={17} color="#c9a84c" />
                     <Text
                       style={{
                         color: "#c9a84c",
@@ -281,7 +284,7 @@ export default function LocationsScreen() {
                         marginLeft: 8,
                       }}
                     >
-                      Go Here
+                      View Conditions
                     </Text>
                   </View>
                 </Pressable>

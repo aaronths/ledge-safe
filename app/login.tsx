@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { type Href, useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
@@ -8,11 +9,17 @@ import {
   Platform,
   Pressable,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import Animated, { Easing, FadeInDown } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { auth } from "../firebase/firebaseConfig";
+
+import { LedgeButton } from "@/components/LedgeButton";
+import { LedgeInput } from "@/components/LedgeInput";
+import { OceanBackdrop } from "@/components/OceanBackdrop";
+
+const easing = Easing.bezier(0.2, 0, 0, 1);
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -55,85 +62,94 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSignUp = () => {
+  const handleCreateAccount = () => {
     router.push("/register" as Href);
   };
 
+  const handleForgotPassword = () => {
+    router.push("/forgot-password" as Href);
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "bottom"]}>
+    <SafeAreaView className="flex-1 bg-midnight-950" edges={["top", "bottom"]}>
+      <OceanBackdrop />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 justify-center px-6"
+        className="flex-1 justify-center px-6 pb-8 pt-6"
       >
-        <View className="mb-10">
-          <Text className="text-3xl font-bold text-gray-900">LedgeSafe</Text>
-          <Text className="mt-2 text-gray-600">
-            Sign in to your LedgeSafe account
+        <View className="items-center gap-3">
+          <View className="flex-row items-center gap-3">
+            <View className="h-10 w-10 items-center justify-center rounded-xl bg-sand-300">
+              <MaterialCommunityIcons name="anchor" size={20} color="#070f24" />
+            </View>
+
+            <Text className="text-[36px] font-semibold tracking-tight text-sand-100">
+              Ledge Safe
+            </Text>
+          </View>
+
+          <Text className="max-w-[280px] text-center text-lg leading-7 text-sand-200/85">
+            Check the ledge before you cast.
           </Text>
         </View>
 
-        <View className="gap-4">
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">
-              Email
-            </Text>
-            <TextInput
+        <Animated.View
+          entering={FadeInDown.duration(400).easing(easing)}
+          className="mt-10 w-full gap-7"
+        >
+          <View className="gap-5">
+            <LedgeInput
               autoCapitalize="none"
               autoComplete="email"
-              className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-base text-gray-900"
               keyboardType="email-address"
+              label="Email Address"
               onChangeText={setEmail}
               placeholder="you@example.com"
-              placeholderTextColor="#9ca3af"
               value={email}
               editable={!isLoading}
             />
-          </View>
 
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">
-              Password
-            </Text>
-            <TextInput
+            <LedgeInput
               autoCapitalize="none"
               autoComplete="password"
-              className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-base text-gray-900"
+              label="Password"
               onChangeText={setPassword}
               placeholder="••••••••"
-              placeholderTextColor="#9ca3af"
               secureTextEntry
               value={password}
               editable={!isLoading}
             />
           </View>
 
-          <Pressable onPress={() => {}} className="mt-1 self-end">
-            <Text className="text-sm text-blue-600">Forgot password?</Text>
-          </Pressable>
-
           <Pressable
-            onPress={handleLogin}
+            onPress={handleForgotPassword}
+            className="self-center"
             disabled={isLoading}
-            className={`mt-4 rounded-xl py-3.5 active:opacity-90 ${
-              isLoading ? "bg-blue-400" : "bg-blue-600"
-            }`}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text className="text-center text-base font-semibold text-white">
-                Sign in
-              </Text>
-            )}
+            <Text className="text-base text-sand-200/55">Forgot password?</Text>
           </Pressable>
-        </View>
 
-        <View className="mt-8 flex-row justify-center gap-1">
-          <Text className="text-gray-600">Don{"'"}t have an account?</Text>
-          <Pressable onPress={handleSignUp}>
-            <Text className="font-medium text-blue-600">Sign up</Text>
-          </Pressable>
-        </View>
+          <View className="gap-3">
+            <LedgeButton onPress={handleLogin} disabled={isLoading}>
+              {isLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                "Sign In"
+              )}
+            </LedgeButton>
+
+            <LedgeButton
+              variant="ghost"
+              onPress={handleCreateAccount}
+              disabled={isLoading}
+            >
+              <Text className="text-center text-base font-medium text-sand-200/65">
+                New here? <Text className="text-sand-300">Create an account</Text>
+              </Text>
+            </LedgeButton>
+          </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

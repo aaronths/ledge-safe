@@ -22,7 +22,11 @@ import {
   View,
 } from "react-native";
 import { type Href, useRouter } from "expo-router";
-import MapView, { MapType, type MapViewProps, type Region } from "react-native-maps";
+import MapView, {
+  MapType,
+  type MapViewProps,
+  type Region,
+} from "react-native-maps";
 import { auth, db } from "../../firebase/firebaseConfig";
 import { pendingMapTarget } from "./locations";
 
@@ -359,9 +363,27 @@ export default function MapScreen() {
       {/* Crosshair */}
       <View style={styles.crosshairOverlay} pointerEvents="none">
         <View style={styles.crosshair}>
-          <View style={styles.crosshairLineVertical} />
-          <View style={styles.crosshairLineHorizontal} />
-          <View style={styles.crosshairDot} />
+          <View
+            style={
+              mapType === "satellite" || mapType === "hybrid"
+                ? styles.crosshairLineVerticalLight
+                : styles.crosshairLineVertical
+            }
+          />
+          <View
+            style={
+              mapType === "satellite" || mapType === "hybrid"
+                ? styles.crosshairLineHorizontalLight
+                : styles.crosshairLineHorizontal
+            }
+          />
+          <View
+            style={
+              mapType === "satellite" || mapType === "hybrid"
+                ? styles.crosshairDotLight
+                : styles.crosshairDot
+            }
+          />
         </View>
       </View>
 
@@ -403,7 +425,7 @@ export default function MapScreen() {
                 ]}
                 onPress={() => handleSelectResult(result)}
               >
-            <Ionicons name="location-outline" size={15} color="#d8b372" />
+                <Ionicons name="location-outline" size={15} color="#d8b372" />
                 <Text style={styles.searchResultText} numberOfLines={1}>
                   {result.name}
                 </Text>
@@ -527,7 +549,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 2,
     height: 32,
-    backgroundColor: "#d8b372",
+    backgroundColor: "#0f1f3d",
     borderRadius: 1,
     opacity: 0.9,
   },
@@ -535,7 +557,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 32,
     height: 2,
-    backgroundColor: "#d8b372",
+    backgroundColor: "#0f1f3d",
     borderRadius: 1,
     opacity: 0.9,
   },
@@ -543,7 +565,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#d8b372",
+    backgroundColor: "#0f1f3d",
   },
   crosshairShadow: {
     width: 12,
@@ -552,7 +574,28 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.2)",
     marginTop: 4,
   },
-
+  crosshairLineVerticalLight: {
+    position: "absolute",
+    width: 2,
+    height: 32,
+    backgroundColor: "#d8b372",
+    borderRadius: 1,
+    opacity: 0.9,
+  },
+  crosshairLineHorizontalLight: {
+    position: "absolute",
+    width: 32,
+    height: 2,
+    backgroundColor: "#d8b372",
+    borderRadius: 1,
+    opacity: 0.9,
+  },
+  crosshairDotLight: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#d8b372",
+  },
   searchContainer: {
     position: "absolute",
     top: 16,
@@ -583,7 +626,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0,
     includeFontPadding: false,
-    marginTop: -2,
+    marginTop: 0,
   },
   searchResults: {
     backgroundColor: "#0f1f3d",

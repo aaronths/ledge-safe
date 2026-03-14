@@ -83,7 +83,7 @@ export default function LocationsScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#0a1628" }} edges={["bottom"]}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color="#c9a84c" size="large" />
+          <ActivityIndicator color="#d8b372" size="large" />
           <Text style={{ color: "#64748b", marginTop: 12, fontSize: 14 }}>Loading locations...</Text>
         </View>
       </SafeAreaView>
@@ -98,7 +98,7 @@ export default function LocationsScreen() {
       >
         {/* Header */}
         <View style={{ marginBottom: 4 }}>
-          <Text style={{ color: "#c9a84c", fontSize: 22, fontWeight: "700" }}>
+          <Text style={{ color: "#d8b372", fontSize: 22, fontWeight: "700" }}>
             Saved Locations
           </Text>
           <Text style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
@@ -131,7 +131,7 @@ export default function LocationsScreen() {
                 marginBottom: 16,
               }}
             >
-              <Ionicons name="bookmark-outline" size={30} color="#c9a84c" />
+              <Ionicons name="bookmark-outline" size={30} color="#d8b372" />
             </View>
             <Text
               style={{
@@ -181,7 +181,7 @@ export default function LocationsScreen() {
                       flexShrink: 0,
                     }}
                   >
-                    <Ionicons name="location" size={22} color="#c9a84c" />
+                    <Ionicons name="location" size={22} color="#d8b372" />
                   </View>
 
                   <View style={{ flex: 1, paddingTop: 2 }}>
@@ -197,7 +197,7 @@ export default function LocationsScreen() {
                     </Text>
                     <Text
                       style={{
-                        color: "#c9a84c",
+                        color: "#d8b372",
                         fontSize: 11,
                         fontWeight: "600",
                         textTransform: "uppercase",
@@ -217,7 +217,7 @@ export default function LocationsScreen() {
                       marginTop: -2,
                     })}
                   >
-                    <Ionicons name="bookmark" size={24} color="#c9a84c" />
+                    <Ionicons name="bookmark" size={24} color="#d8b372" />
                   </Pressable>
                 </View>
 
@@ -275,10 +275,10 @@ export default function LocationsScreen() {
                       flexWrap: "nowrap",
                     }}
                   >
-                    <Ionicons name="water" size={17} color="#c9a84c" />
+                    <Ionicons name="water" size={17} color="#d8b372" />
                     <Text
                       style={{
-                        color: "#c9a84c",
+                        color: "#d8b372",
                         fontSize: 15,
                         fontWeight: "700",
                         marginLeft: 8,

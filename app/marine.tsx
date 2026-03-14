@@ -1,13 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { fetchWeatherApi } from "openmeteo";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 import { type GraphPoint } from "react-native-graph";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { calculateRiskScore } from "../services/riskScore";
+import { LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
 
-const apiUrl = process.env.EXPO_PUBLIC_OPENAI_API_KEY;;
+const apiUrl = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
 type TimeSeriesPoint = {
   time: string;
@@ -16,12 +27,6 @@ type TimeSeriesPoint = {
   swell_wave_direction: number | null;
   swell_wave_period: number | null;
 };
-
-function formatTimeLabel(date: Date): string {
-  const h = date.getHours();
-  const m = date.getMinutes();
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
-}
 
 type AISummary = {
   loading: boolean;
@@ -36,6 +41,7 @@ function Section({
   color,
   width,
   fixedYAxis,
+  chartStyle,
 }: {
   title: string;
   unit: string;
@@ -48,6 +54,7 @@ function Section({
     mostNegativeValue?: number;
     noOfSectionsBelowXAxis?: number;
   };
+  chartStyle?: ViewStyle;
 }) {
   const { min, max } = useMemo(() => {
     if (points.length === 0)
@@ -63,13 +70,38 @@ function Section({
 
   const lineData = useMemo(
     () =>
-      points.map((p) => {
-        const d = p.date;
-        const is3hr = d.getHours() % 3 === 0 && d.getMinutes() === 0;
+      points.map((p, idx) => {
+        // Force axis labels to show fixed 3-hour intervals from 12am to 12am
+        const labels3h = [
+          "12am",
+          "3am",
+          "6am",
+          "9am",
+          "12pm",
+          "3pm",
+          "6pm",
+          "9pm",
+          "12am",
+        ];
+
+        let label = "";
+        let showXAxisIndex = false;
+
+        if (points.length >= 24) {
+          // Assume hourly points; show a label every 3 points
+          if (idx % 3 === 0) {
+            const labelIdx = idx / 3;
+            if (labelIdx < labels3h.length) {
+              label = labels3h[labelIdx];
+              showXAxisIndex = true;
+            }
+          }
+        }
+
         return {
           value: p.value,
-          label: is3hr ? formatTimeLabel(d) : "",
-          showXAxisIndex: is3hr,
+          label,
+          showXAxisIndex,
         };
       }),
     [points],
@@ -102,8 +134,8 @@ function Section({
             parentWidth={chartWidth}
             width={chartWidth}
             spacing={Math.max(8, Math.min(spacing, 40))}
-            initialSpacing={8}
-            endSpacing={24}
+            initialSpacing={18}
+            endSpacing={32}
             height={CHART_HEIGHT}
             noOfSections={fixedYAxis?.noOfSections ?? 4}
             noOfSectionsBelowXAxis={fixedYAxis?.noOfSectionsBelowXAxis}
@@ -137,7 +169,119 @@ function Section({
   );
 }
 
-function AISummaryCard({ timeSeries }: { timeSeries: TimeSeriesPoint[] | null }) {
+function RiskScoreSection({
+  points,
+  width,
+}: {
+  points: GraphPoint[];
+  width: number;
+}) {
+  const lineData = useMemo(
+    () =>
+      points.map((p, idx) => {
+        const labels3h = [
+          "12am",
+          "3am",
+          "6am",
+          "9am",
+          "12pm",
+          "3pm",
+          "6pm",
+          "9pm",
+          "12am",
+        ];
+
+        let label = "";
+        let showXAxisIndex = false;
+
+        if (points.length >= 24) {
+          if (idx % 3 === 0) {
+            const labelIdx = idx / 3;
+            if (labelIdx < labels3h.length) {
+              label = labels3h[labelIdx];
+              showXAxisIndex = true;
+            }
+          }
+        }
+
+        return {
+          value: p.value,
+          label,
+          showXAxisIndex,
+        };
+      }),
+    [points],
+  );
+
+  const chartWidth = width - 44;
+  const spacing = lineData.length > 1 ? chartWidth / (lineData.length - 1) : 0;
+
+  return (
+    <View style={[styles.section, { width }]}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle} numberOfLines={1}>
+          Today&apos;s Risk Score
+        </Text>
+      </View>
+      <View style={styles.chartContainer}>
+        {lineData.length > 0 ? (
+          <LineChart
+            data={lineData}
+            lineGradient
+            lineGradientId="grd"
+            lineGradientComponent={() => {
+              return (
+                <SvgLinearGradient id="grd" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={"red"} />
+                  <Stop offset="0.5" stopColor={"yellow"} />
+                  <Stop offset="1" stopColor={"green"} />
+                </SvgLinearGradient>
+              );
+            }}
+            thickness={4}
+            hideDataPoints
+            parentWidth={chartWidth}
+            width={chartWidth}
+            spacing={Math.max(8, Math.min(spacing, 40))}
+            initialSpacing={18}
+            endSpacing={32}
+            height={CHART_HEIGHT}
+            noOfSections={4}
+            maxValue={100}
+            mostNegativeValue={0}
+            showFractionalValues={false}
+            roundToDigits={0}
+            yAxisLabelSuffix=" %"
+            yAxisColor="#475569"
+            yAxisTextStyle={{ color: "#9ca3af", fontSize: 10 }}
+            xAxisColor="#475569"
+            xAxisLabelTexts={lineData.map((d) => d.label)}
+            xAxisLabelTextStyle={{
+              color: "#9ca3af",
+              fontSize: 10,
+              width: 44,
+              textAlign: "center",
+              marginLeft: -22,
+            }}
+            rulesColor="rgba(71,85,105,0.3)"
+            isAnimated
+            disableScroll
+          />
+        ) : (
+          <View style={styles.emptyChart}>
+            <Text style={styles.emptyChartText}>No data available.</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function AISummaryCard({
+  timeSeries,
+}: {
+  timeSeries: TimeSeriesPoint[] | null;
+}) {
   const [aiState, setAiState] = useState<AISummary>({
     loading: false,
     error: null,
@@ -156,8 +300,12 @@ function AISummaryCard({ timeSeries }: { timeSeries: TimeSeriesPoint[] | null })
         // Find the data point closest to current time
         const now = new Date();
         const closest = timeSeries.reduce((prev, curr) => {
-          const prevDiff = Math.abs(new Date(prev.time).getTime() - now.getTime());
-          const currDiff = Math.abs(new Date(curr.time).getTime() - now.getTime());
+          const prevDiff = Math.abs(
+            new Date(prev.time).getTime() - now.getTime(),
+          );
+          const currDiff = Math.abs(
+            new Date(curr.time).getTime() - now.getTime(),
+          );
           return currDiff < prevDiff ? curr : prev;
         });
 
@@ -169,7 +317,17 @@ function AISummaryCard({ timeSeries }: { timeSeries: TimeSeriesPoint[] | null })
           swell_wave_period: closest.swell_wave_period,
         };
 
-        const prompt = `You are a marine safety advisor specializing in rock fishing safety. Analyze the following current marine conditions and provide a brief assessment (2-3 sentences) on the safety for rock fishing activities. Be concise and practical.
+        const currentRisk = calculateRiskScore({
+          swellHeight: currentConditions.swell_wave_height,
+          tideHeight: currentConditions.sea_level_height_msl,
+        });
+        const riskText =
+          currentRisk != null && Number.isFinite(currentRisk)
+            ? `${currentRisk.toFixed(0)}%`
+            : "N/A";
+
+        const prompt = `You are a marine safety advisor specializing in rock fishing safety. Analyze the following current marine conditions and with the guidance of a calculated 'Risk Score' (given as a percentage, with 100% being most unsafe), provide a brief assessment (2-3 sentences) on the safety for rock fishing activities. Be concise and practical.
+Risk Score: ${riskText}
 
 Current Marine Conditions:
 - Tide (Sea Level Height MSL): ${currentConditions.sea_level_height_msl?.toFixed(2) ?? "N/A"} m
@@ -178,31 +336,34 @@ Current Marine Conditions:
 - Swell Period: ${currentConditions.swell_wave_period?.toFixed(1) ?? "N/A"} seconds
 - Time: ${currentConditions.time}
 
-Provide a safety rating (Safe, Moderate, or Unsafe) for rock fishing specifically and brief reasoning. Always mention the swell height and tide in your assessment, as these are critical factors for rock fishing safety.`;
+Start your response with "Right now,"`;
 
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiUrl}`,
+        const response = await fetch(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiUrl}`,
+            },
+            body: JSON.stringify({
+              model: "gpt-3.5-turbo",
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are a marine safety expert who provides concise, actionable advice about rock fishing conditions based on marine data.",
+                },
+                {
+                  role: "user",
+                  content: prompt,
+                },
+              ],
+              max_tokens: 150,
+              temperature: 0.7,
+            }),
           },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a marine safety expert who provides concise, actionable advice about rock fishing conditions based on marine data.",
-              },
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-            max_tokens: 150,
-            temperature: 0.7,
-          }),
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`OpenAI API error: ${response.status}`);
@@ -246,7 +407,9 @@ Provide a safety rating (Safe, Moderate, or Unsafe) for rock fishing specificall
         padding: 16,
       }}
     >
-      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
+      <View
+        style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}
+      >
         <View
           style={{
             marginRight: 12,
@@ -258,21 +421,27 @@ Provide a safety rating (Safe, Moderate, or Unsafe) for rock fishing specificall
             backgroundColor: "rgba(201, 168, 76, 0.15)",
           }}
         >
-          <Ionicons name="sparkles" size={20} color="#c9a84c" />
+          <Ionicons name="sparkles" size={20} color="#d8b372" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, fontWeight: "700", color: "#e5e7eb" }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#e5e7eb" }}>
             AI Safety Assessment
           </Text>
-          <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+          <Text style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
             Powered by OpenAI
           </Text>
         </View>
       </View>
 
       {aiState.loading && (
-        <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16 }}>
-          <ActivityIndicator size="small" color="#c9a84c" />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 16,
+          }}
+        >
+          <ActivityIndicator size="small" color="#d8b372" />
           <Text style={{ marginLeft: 12, fontSize: 14, color: "#e5e7eb" }}>
             Analyzing conditions...
           </Text>
@@ -306,7 +475,7 @@ Provide a safety rating (Safe, Moderate, or Unsafe) for rock fishing specificall
             padding: 12,
           }}
         >
-          <Text style={{ fontSize: 14, lineHeight: 20, color: "#e5e7eb" }}>
+          <Text style={{ fontSize: 16, lineHeight: 24, color: "#e5e7eb" }}>
             {aiState.summary}
           </Text>
         </View>
@@ -336,7 +505,8 @@ const styles = StyleSheet.create({
   sectionTitle: {
     flex: 1,
     paddingRight: 8,
-    fontSize: 14,
+    paddingBottom: 8,
+    fontSize: 24,
     fontWeight: "600",
     color: "#e5e7eb",
   },
@@ -380,8 +550,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   toggleButtonActive: {
-    backgroundColor: "#c9a84c",
-    borderColor: "#c9a84c",
+    backgroundColor: "#d8b372",
+    borderColor: "#d8b372",
   },
   toggleText: {
     fontSize: 13,
@@ -434,6 +604,7 @@ export default function MarineScreen() {
             "swell_wave_direction",
             "swell_wave_period",
           ],
+          timezone: "auto",
           forecast_days: 1,
         };
         const url = "https://marine-api.open-meteo.com/v1/marine";
@@ -501,11 +672,25 @@ export default function MarineScreen() {
         })
         .filter((x): x is GraphPoint => x != null);
 
+    const risk: GraphPoint[] = timeSeries
+      .map((p) => {
+        const score = calculateRiskScore({
+          swellHeight: p.swell_wave_height,
+          tideHeight: p.sea_level_height_msl,
+        });
+        if (score == null) return null;
+        const d = new Date(p.time);
+        if (!Number.isFinite(d.getTime())) return null;
+        return { date: d, value: score };
+      })
+      .filter((x): x is GraphPoint => x != null);
+
     return {
       sea: toPoints("sea_level_height_msl"),
       swellH: toPoints("swell_wave_height"),
       swellDir: toPoints("swell_wave_direction"),
       swellP: toPoints("swell_wave_period"),
+      risk,
     };
   }, [timeSeries]);
 
@@ -547,7 +732,10 @@ export default function MarineScreen() {
               >
                 {locationName}
               </Text>
-              <Text style={{ fontSize: 11, color: "#9ca3af" }} numberOfLines={1}>
+              <Text
+                style={{ fontSize: 11, color: "#9ca3af" }}
+                numberOfLines={1}
+              >
                 Conditions Next 24hrs ·{" "}
                 {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
                 {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
@@ -585,7 +773,7 @@ export default function MarineScreen() {
               <Text
                 style={{ fontWeight: "600", color: "#fecaca", marginBottom: 4 }}
               >
-                Couldn't load marine data
+                Couldn&apos;t load marine data
               </Text>
               <Text style={{ color: "#fecaca", fontSize: 13 }}>{error}</Text>
             </View>
@@ -593,6 +781,16 @@ export default function MarineScreen() {
 
           {!loading && !error && timeSeries && (
             <View>
+              {/* Risk score chart */}
+              {graphData && (
+                <View style={{ marginTop: 16, paddingHorizontal: 12 }}>
+                  <RiskScoreSection
+                    points={graphData.risk}
+                    width={chartWidth}
+                  />
+                </View>
+              )}
+
               {/* AI Summary Card */}
               <AISummaryCard timeSeries={timeSeries} />
 
@@ -627,7 +825,7 @@ export default function MarineScreen() {
                       mode === "sea" && styles.toggleTextActive,
                     ]}
                   >
-                    Sea level height
+                    Tides
                   </Text>
                 </Pressable>
                 <Pressable
@@ -643,7 +841,7 @@ export default function MarineScreen() {
                       mode === "period" && styles.toggleTextActive,
                     ]}
                   >
-                    Wave period
+                    Wave Period
                   </Text>
                 </Pressable>
               </View>
@@ -656,7 +854,7 @@ export default function MarineScreen() {
                       title="Swell wave height"
                       unit="m"
                       points={graphData.swellH}
-                      color="#c9a84c"
+                      color="#d8b372"
                       width={chartWidth}
                       fixedYAxis={{ maxValue: 5, noOfSections: 5 }}
                     />

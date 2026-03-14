@@ -22,15 +22,11 @@ import {
   View,
 } from "react-native";
 import { type Href, useRouter } from "expo-router";
-import MapView, {
-  MapType,
-  type MapViewProps,
-  type Region,
-} from "react-native-maps";
+import MapView, { MapType, type MapViewProps, type Region } from "react-native-maps";
 import { auth, db } from "../../firebase/firebaseConfig";
 import { pendingMapTarget } from "./locations";
 
-const INITIAL_REGION: Region = {
+const FALLBACK_REGION: Region = {
   latitude: 37.78825,
   longitude: -122.4324,
   latitudeDelta: 0.0922,
@@ -62,9 +58,10 @@ export default function MapScreen() {
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [initialRegion, setInitialRegion] = useState<Region | null>(null);
   const [centerCoordinates, setCenterCoordinates] = useState({
-    latitude: INITIAL_REGION.latitude,
-    longitude: INITIAL_REGION.longitude,
+    latitude: FALLBACK_REGION.latitude,
+    longitude: FALLBACK_REGION.longitude,
   });
   const [locationName, setLocationName] = useState<string>("San Francisco, CA");
   const [isGeocoding, setIsGeocoding] = useState(false);
@@ -84,23 +81,56 @@ export default function MapScreen() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [marineLoading, setMarineLoading] = useState(false);
 
-  // Jump to user location on mount
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
+    setIsGeocoding(true);
+    try {
+      const results = await Location.reverseGeocodeAsync({
+        latitude: lat,
+        longitude: lng,
+      });
+      if (results.length > 0) {
+        const r = results[0];
+        const parts = [
+          r.district ?? r.subregion,
+          r.city ?? r.region,
+          r.isoCountryCode,
+        ].filter(Boolean);
+        setLocationName(parts.slice(0, 2).join(", ") || "Unknown location");
+      }
+    } catch {
+      setLocationName("Unknown location");
+    } finally {
+      setIsGeocoding(false);
+    }
+  }, []);
+
+  // Use device location as initial region where possible
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-      const location = await Location.getCurrentPositionAsync({});
-      mapRef.current?.animateToRegion(
-        {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          setInitialRegion(FALLBACK_REGION);
+          return;
+        }
+        const location = await Location.getCurrentPositionAsync({});
+        const userRegion: Region = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
-        },
-        800,
-      );
+        };
+        setInitialRegion(userRegion);
+        setCenterCoordinates({
+          latitude: userRegion.latitude,
+          longitude: userRegion.longitude,
+        });
+        reverseGeocode(userRegion.latitude, userRegion.longitude);
+      } catch {
+        setInitialRegion(FALLBACK_REGION);
+      }
     })();
-  }, []);
+  }, [reverseGeocode]);
 
   // Listen to saved locations in real time so bookmark icon stays in sync
   useEffect(() => {
@@ -145,29 +175,6 @@ export default function MapScreen() {
       Math.abs(loc.latitude - centerCoordinates.latitude) < 0.001 &&
       Math.abs(loc.longitude - centerCoordinates.longitude) < 0.001,
   );
-
-  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
-    setIsGeocoding(true);
-    try {
-      const results = await Location.reverseGeocodeAsync({
-        latitude: lat,
-        longitude: lng,
-      });
-      if (results.length > 0) {
-        const r = results[0];
-        const parts = [
-          r.district ?? r.subregion,
-          r.city ?? r.region,
-          r.isoCountryCode,
-        ].filter(Boolean);
-        setLocationName(parts.slice(0, 2).join(", ") || "Unknown location");
-      }
-    } catch {
-      setLocationName("Unknown location");
-    } finally {
-      setIsGeocoding(false);
-    }
-  }, []);
 
   const handleRegionChange = useCallback(() => {
     setIsMoving(true);
@@ -332,35 +339,36 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={INITIAL_REGION}
-        onRegionChange={handleRegionChange}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        mapType={mapType}
-        showsUserLocation
-        showsMyLocationButton
-        showsCompass
-        showsScale
-        showsBuildings
-        showsTraffic={false}
-      />
+      {initialRegion && (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          initialRegion={initialRegion}
+          onRegionChange={handleRegionChange}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          mapType={mapType}
+          showsUserLocation
+          showsMyLocationButton
+          showsCompass
+          showsScale
+          showsBuildings
+          showsTraffic={false}
+        />
+      )}
 
       {/* Crosshair */}
       <View style={styles.crosshairOverlay} pointerEvents="none">
-        <View style={[styles.crosshair, isMoving && styles.crosshairMoving]}>
+        <View style={styles.crosshair}>
           <View style={styles.crosshairLineVertical} />
           <View style={styles.crosshairLineHorizontal} />
           <View style={styles.crosshairDot} />
         </View>
-        {isMoving && <View style={styles.crosshairShadow} />}
       </View>
 
       {/* Search bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
-          <Ionicons name="search" size={16} color="#c9a84c" />
+          <Ionicons name="search" size={16} color="#d8b372" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search for a place..."
@@ -371,7 +379,7 @@ export default function MapScreen() {
             onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
             returnKeyType="search"
           />
-          {isSearching && <ActivityIndicator size="small" color="#c9a84c" />}
+          {isSearching && <ActivityIndicator size="small" color="#d8b372" />}
           {searchQuery.length > 0 && !isSearching && (
             <Pressable
               onPress={() => {
@@ -395,7 +403,7 @@ export default function MapScreen() {
                 ]}
                 onPress={() => handleSelectResult(result)}
               >
-                <Ionicons name="location-outline" size={15} color="#c9a84c" />
+            <Ionicons name="location-outline" size={15} color="#d8b372" />
                 <Text style={styles.searchResultText} numberOfLines={1}>
                   {result.name}
                 </Text>
@@ -431,13 +439,13 @@ export default function MapScreen() {
       {/* Bottom panel */}
       <View style={styles.bottomPanel}>
         <View style={styles.locationRow}>
-          <Ionicons name="location" size={20} color="#c9a84c" />
+          <Ionicons name="location" size={20} color="#d8b372" />
           <View style={{ flex: 1 }}>
             {isGeocoding ? (
               <View
                 style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
               >
-                <ActivityIndicator size="small" color="#c9a84c" />
+                <ActivityIndicator size="small" color="#d8b372" />
                 <Text style={styles.locationNameLoading}>
                   Finding location...
                 </Text>
@@ -463,12 +471,12 @@ export default function MapScreen() {
             ]}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="#c9a84c" />
+              <ActivityIndicator size="small" color="#d8b372" />
             ) : (
               <Ionicons
                 name={currentlySaved ? "bookmark" : "bookmark-outline"}
                 size={22}
-                color="#c9a84c"
+                color="#d8b372"
               />
             )}
           </Pressable>
@@ -488,7 +496,7 @@ export default function MapScreen() {
 
         {savedCoordinates && (
           <View style={styles.savedBadge}>
-            <Ionicons name="checkmark-circle" size={14} color="#c9a84c" />
+            <Ionicons name="checkmark-circle" size={14} color="#d8b372" />
             <Text style={styles.savedText}>
               Analysis saved · {savedCoordinates.name}
             </Text>
@@ -519,7 +527,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 2,
     height: 32,
-    backgroundColor: "#c9a84c",
+    backgroundColor: "#d8b372",
     borderRadius: 1,
     opacity: 0.9,
   },
@@ -527,7 +535,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 32,
     height: 2,
-    backgroundColor: "#c9a84c",
+    backgroundColor: "#d8b372",
     borderRadius: 1,
     opacity: 0.9,
   },
@@ -535,7 +543,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#c9a84c",
+    backgroundColor: "#d8b372",
   },
   crosshairShadow: {
     width: 12,
@@ -561,20 +569,28 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     gap: 10,
     borderWidth: 1.5,
-    borderColor: "#c9a84c40",
+    borderColor: "#d8b37240",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
   },
-  searchInput: { flex: 1, color: "#e2e8f0", fontSize: 15, padding: 0 },
+  searchInput: {
+    flex: 1,
+    color: "#e2e8f0",
+    fontSize: 15,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    includeFontPadding: false,
+    marginTop: -2,
+  },
   searchResults: {
     backgroundColor: "#0f1f3d",
     borderRadius: 14,
     marginTop: 6,
     borderWidth: 1.5,
-    borderColor: "#c9a84c40",
+    borderColor: "#d8b37240",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -613,7 +629,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 3,
   },
-  mapTypeBtnActive: { backgroundColor: "#c9a84c", borderColor: "#c9a84c" },
+  mapTypeBtnActive: { backgroundColor: "#d8b372", borderColor: "#d8b372" },
   mapTypeBtnText: { color: "#94a3b8", fontSize: 12, fontWeight: "600" },
   mapTypeBtnTextActive: { color: "#0f1f3d" },
 
@@ -647,22 +663,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#c9a84c40",
+    borderColor: "#d8b37240",
   },
   saveBtnPressed: { opacity: 0.6 },
   marineButton: {
-    backgroundColor: "#c9a84c",
+    backgroundColor: "#d8b372",
     borderRadius: 12,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "#c9a84c40",
+    borderColor: "#d8b37240",
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48,
   },
   marineButtonText: { color: "#1e3a5f", fontSize: 16, fontWeight: "900" },
   button: {
-    backgroundColor: "#c9a84c",
+    backgroundColor: "#d8b372",
     borderRadius: 12,
     paddingVertical: 14,
     marginTop: 2,
@@ -683,5 +699,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  savedText: { color: "#c9a84c", fontSize: 12 },
+  savedText: { color: "#d8b372", fontSize: 12 },
 });

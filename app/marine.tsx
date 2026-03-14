@@ -2,17 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { fetchWeatherApi } from "openmeteo";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import { type GraphPoint } from "react-native-graph";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
+import { type GraphPoint } from "react-native-graph";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+const apiUrl = process.env.EXPO_PUBLIC_OPENAI_API_KEY;;
 
 type TimeSeriesPoint = {
   time: string;
@@ -27,6 +22,12 @@ function formatTimeLabel(date: Date): string {
   const m = date.getMinutes();
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 }
+
+type AISummary = {
+  loading: boolean;
+  error: string | null;
+  summary: string | null;
+};
 
 function Section({
   title,
@@ -132,6 +133,190 @@ function Section({
           </View>
         )}
       </View>
+    </View>
+  );
+}
+
+function AISummaryCard({ timeSeries }: { timeSeries: TimeSeriesPoint[] | null }) {
+  const [aiState, setAiState] = useState<AISummary>({
+    loading: false,
+    error: null,
+    summary: null,
+  });
+
+  useEffect(() => {
+    if (!timeSeries || timeSeries.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setAiState({ loading: true, error: null, summary: null });
+
+      try {
+        // Find the data point closest to current time
+        const now = new Date();
+        const closest = timeSeries.reduce((prev, curr) => {
+          const prevDiff = Math.abs(new Date(prev.time).getTime() - now.getTime());
+          const currDiff = Math.abs(new Date(curr.time).getTime() - now.getTime());
+          return currDiff < prevDiff ? curr : prev;
+        });
+
+        const currentConditions = {
+          time: new Date(closest.time).toLocaleString(),
+          sea_level_height_msl: closest.sea_level_height_msl,
+          swell_wave_height: closest.swell_wave_height,
+          swell_wave_direction: closest.swell_wave_direction,
+          swell_wave_period: closest.swell_wave_period,
+        };
+
+        const prompt = `You are a marine safety advisor specializing in rock fishing safety. Analyze the following current marine conditions and provide a brief assessment (2-3 sentences) on the safety for rock fishing activities. Be concise and practical.
+
+Current Marine Conditions:
+- Tide (Sea Level Height MSL): ${currentConditions.sea_level_height_msl?.toFixed(2) ?? "N/A"} m
+- Swell Height: ${currentConditions.swell_wave_height?.toFixed(2) ?? "N/A"} m
+- Swell Direction: ${currentConditions.swell_wave_direction?.toFixed(0) ?? "N/A"}°
+- Swell Period: ${currentConditions.swell_wave_period?.toFixed(1) ?? "N/A"} seconds
+- Time: ${currentConditions.time}
+
+Provide a safety rating (Safe, Moderate, or Unsafe) for rock fishing specifically and brief reasoning. Always mention the swell height and tide in your assessment, as these are critical factors for rock fishing safety.`;
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiUrl}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a marine safety expert who provides concise, actionable advice about rock fishing conditions based on marine data.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            max_tokens: 150,
+            temperature: 0.7,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const summary = data.choices?.[0]?.message?.content?.trim();
+
+        if (!cancelled) {
+          setAiState({
+            loading: false,
+            error: null,
+            summary: summary || "No summary available.",
+          });
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setAiState({
+            loading: false,
+            error: e?.message ?? "Failed to generate AI summary.",
+            summary: null,
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [timeSeries]);
+
+  return (
+    <View
+      style={{
+        marginHorizontal: 12,
+        marginBottom: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "#1e3a5f",
+        backgroundColor: "#0f1f3d",
+        padding: 16,
+      }}
+    >
+      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            marginRight: 12,
+            height: 40,
+            width: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 20,
+            backgroundColor: "rgba(201, 168, 76, 0.15)",
+          }}
+        >
+          <Ionicons name="sparkles" size={20} color="#c9a84c" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: "#e5e7eb" }}>
+            AI Safety Assessment
+          </Text>
+          <Text style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+            Powered by OpenAI
+          </Text>
+        </View>
+      </View>
+
+      {aiState.loading && (
+        <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16 }}>
+          <ActivityIndicator size="small" color="#c9a84c" />
+          <Text style={{ marginLeft: 12, fontSize: 14, color: "#e5e7eb" }}>
+            Analyzing conditions...
+          </Text>
+        </View>
+      )}
+
+      {aiState.error && (
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#b91c1c",
+            backgroundColor: "#450a0a",
+            padding: 12,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#fecaca" }}>
+            Analysis failed
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#fecaca" }}>
+            {aiState.error}
+          </Text>
+        </View>
+      )}
+
+      {aiState.summary && (
+        <View
+          style={{
+            borderRadius: 12,
+            backgroundColor: "#1e293b",
+            padding: 12,
+          }}
+        >
+          <Text style={{ fontSize: 14, lineHeight: 20, color: "#e5e7eb" }}>
+            {aiState.summary}
+          </Text>
+        </View>
+      )}
+
+      {!aiState.loading && !aiState.error && !aiState.summary && (
+        <Text style={{ fontSize: 14, color: "#9ca3af" }}>
+          No data available for analysis.
+        </Text>
+      )}
     </View>
   );
 }
@@ -289,11 +474,6 @@ export default function MarineScreen() {
 
         if (!cancelled) {
           setTimeSeries(jsonSeries);
-          // requested: log full time series in JSON format
-          console.log(
-            "Open-Meteo marine hourly time series:",
-            JSON.stringify(jsonSeries, null, 2),
-          );
         }
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to fetch marine data.");
@@ -334,101 +514,51 @@ export default function MarineScreen() {
       style={{ flex: 1, backgroundColor: "#0a1628" }}
       edges={["top", "bottom"]}
     >
-      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 12 }}>
-        <View
-          style={{
-            height: 56,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
+      <ScrollView style={{ flex: 1 }}>
+        <View style={{ paddingBottom: 12 }}>
+          <View
             style={{
-              borderRadius: 999,
-              padding: 8,
-              backgroundColor: "#1e293b",
+              height: 56,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingHorizontal: 12,
             }}
           >
-            <Ionicons name="chevron-back" size={22} color="#e5e7eb" />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={12}
               style={{
-                fontSize: 18,
-                fontWeight: "700",
-                color: "#e5e7eb",
+                borderRadius: 999,
+                padding: 8,
+                backgroundColor: "#1e293b",
               }}
-              numberOfLines={1}
             >
-              {locationName}
-            </Text>
-            <Text style={{ fontSize: 11, color: "#9ca3af" }} numberOfLines={1}>
-              Conditions Next 24hrs ·{" "}
-              {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
-              {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
-            </Text>
+              <Ionicons name="chevron-back" size={22} color="#e5e7eb" />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "700",
+                  color: "#e5e7eb",
+                }}
+                numberOfLines={1}
+              >
+                {locationName}
+              </Text>
+              <Text style={{ fontSize: 11, color: "#9ca3af" }} numberOfLines={1}>
+                Conditions Next 24hrs ·{" "}
+                {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
+                {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.toggleRow}>
-          <Pressable
-            onPress={() => setMode("swell")}
-            style={[
-              styles.toggleButton,
-              mode === "swell" && styles.toggleButtonActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.toggleText,
-                mode === "swell" && styles.toggleTextActive,
-              ]}
-            >
-              Swell
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setMode("sea")}
-            style={[
-              styles.toggleButton,
-              mode === "sea" && styles.toggleButtonActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.toggleText,
-                mode === "sea" && styles.toggleTextActive,
-              ]}
-            >
-              Sea level height
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setMode("period")}
-            style={[
-              styles.toggleButton,
-              mode === "period" && styles.toggleButtonActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.toggleText,
-                mode === "period" && styles.toggleTextActive,
-              ]}
-            >
-              Wave period
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={{ flex: 1, marginTop: 8 }}>
           {loading && (
             <View
               style={{
-                flex: 1,
+                paddingVertical: 80,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -443,6 +573,7 @@ export default function MarineScreen() {
           {!loading && error && (
             <View
               style={{
+                marginHorizontal: 12,
                 marginTop: 16,
                 borderRadius: 16,
                 borderWidth: 1,
@@ -454,58 +585,112 @@ export default function MarineScreen() {
               <Text
                 style={{ fontWeight: "600", color: "#fecaca", marginBottom: 4 }}
               >
-                Couldn’t load marine data
+                Couldn't load marine data
               </Text>
               <Text style={{ color: "#fecaca", fontSize: 13 }}>{error}</Text>
             </View>
           )}
 
-          {!loading && !error && graphData && (
-            <View style={{ flex: 1 }}>
-              {mode === "swell" && (
-                <View style={{ flex: 1 }}>
-                  <Section
-                    title="Swell wave height"
-                    unit="m"
-                    points={graphData.swellH}
-                    color="#c9a84c"
-                    width={chartWidth}
-                    fixedYAxis={{ maxValue: 5, noOfSections: 5 }}
-                  />
-                </View>
-              )}
-              {mode === "sea" && (
-                <View style={{ flex: 1 }}>
-                  <Section
-                    title="Sea level height (MSL)"
-                    unit="m"
-                    points={graphData.sea}
-                    color="#38bdf8"
-                    width={chartWidth}
-                    fixedYAxis={{
-                      maxValue: 3,
-                      noOfSections: 3,
-                      mostNegativeValue: -1,
-                      noOfSectionsBelowXAxis: 1,
-                    }}
-                  />
-                </View>
-              )}
-              {mode === "period" && (
-                <View style={{ flex: 1 }}>
-                  <Section
-                    title="Swell wave period"
-                    unit="s"
-                    points={graphData.swellP}
-                    color="#a855f7"
-                    width={chartWidth}
-                  />
+          {!loading && !error && timeSeries && (
+            <View>
+              {/* AI Summary Card */}
+              <AISummaryCard timeSeries={timeSeries} />
+
+              {/* Toggle Buttons */}
+              <View style={[styles.toggleRow, { paddingHorizontal: 12 }]}>
+                <Pressable
+                  onPress={() => setMode("swell")}
+                  style={[
+                    styles.toggleButton,
+                    mode === "swell" && styles.toggleButtonActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      mode === "swell" && styles.toggleTextActive,
+                    ]}
+                  >
+                    Swell
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMode("sea")}
+                  style={[
+                    styles.toggleButton,
+                    mode === "sea" && styles.toggleButtonActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      mode === "sea" && styles.toggleTextActive,
+                    ]}
+                  >
+                    Sea level height
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMode("period")}
+                  style={[
+                    styles.toggleButton,
+                    mode === "period" && styles.toggleButtonActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      mode === "period" && styles.toggleTextActive,
+                    ]}
+                  >
+                    Wave period
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Charts */}
+              {graphData && (
+                <View style={{ marginTop: 8, paddingHorizontal: 12 }}>
+                  {mode === "swell" && (
+                    <Section
+                      title="Swell wave height"
+                      unit="m"
+                      points={graphData.swellH}
+                      color="#c9a84c"
+                      width={chartWidth}
+                      fixedYAxis={{ maxValue: 5, noOfSections: 5 }}
+                    />
+                  )}
+                  {mode === "sea" && (
+                    <Section
+                      title="Sea level height (MSL)"
+                      unit="m"
+                      points={graphData.sea}
+                      color="#38bdf8"
+                      width={chartWidth}
+                      fixedYAxis={{
+                        maxValue: 3,
+                        noOfSections: 3,
+                        mostNegativeValue: -1,
+                        noOfSectionsBelowXAxis: 1,
+                      }}
+                    />
+                  )}
+                  {mode === "period" && (
+                    <Section
+                      title="Swell wave period"
+                      unit="s"
+                      points={graphData.swellP}
+                      color="#a855f7"
+                      width={chartWidth}
+                    />
+                  )}
                 </View>
               )}
             </View>
           )}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

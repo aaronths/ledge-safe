@@ -109,22 +109,42 @@ export default function ProfileScreen() {
         <Pressable
           onPress={handleSignOut}
           style={({ pressed }) => ({
-            backgroundColor: pressed ? "#1a0a0a" : "#1c0f0f",
-            borderRadius: 14,
+            backgroundColor: pressed ? "#13284a" : "#0f1f3d",
+            borderRadius: 16,
             borderWidth: 1,
-            borderColor: "#7f1d1d",
+            borderColor: pressed ? "#c9a84c" : "#1e3a5f",
             paddingVertical: 16,
-            alignItems: "center",
+            paddingHorizontal: 18,
             flexDirection: "row",
-            justifyContent: "center",
-            gap: 8,
+            alignItems: "center",
+            justifyContent: "space-between",
             marginTop: 8,
           })}
         >
-          <Ionicons name="log-out-outline" size={18} color="#ef4444" />
-          <Text style={{ color: "#ef4444", fontSize: 15, fontWeight: "600" }}>
-            Sign out
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 19,
+                backgroundColor: "rgba(201, 168, 76, 0.15)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Ionicons name="log-out-outline" size={18} color="#c9a84c" />
+            </View>
+
+            <View>
+              <Text style={{ color: "#e2e8f0", fontSize: 15, fontWeight: "600" }}>
+                Sign out
+              </Text>
+              <Text style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>
+                Log out of your account
+              </Text>
+            </View>
+          </View>
         </Pressable>
 
       </ScrollView>

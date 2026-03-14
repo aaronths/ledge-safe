@@ -6,7 +6,19 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: "#2563eb",
+        tabBarActiveTintColor: "#c9a84c",
+        tabBarInactiveTintColor: "#6b7280",
+        tabBarStyle: {
+          backgroundColor: "#0f1f3d",
+          borderTopColor: "#1e3a5f",
+        },
+        headerStyle: {
+          backgroundColor: "#0f1f3d",
+        },
+        headerTintColor: "#c9a84c",
+        headerTitleStyle: {
+          fontWeight: "700",
+        },
       }}
     >
       <Tabs.Screen
@@ -33,6 +45,15 @@ export default function TabsLayout() {
           title: "Guide",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="book" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />

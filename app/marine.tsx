@@ -1,7 +1,8 @@
-import { fetchWeatherApi } from "openmeteo";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
+import { fetchWeatherApi } from "openmeteo";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -14,6 +15,15 @@ type TimeSeriesPoint = {
 };
 
 type ChartPoint = { value: number; label?: string };
+
+type AISummary = {
+  loading: boolean;
+  error: string | null;
+  summary: string | null;
+};
+
+// Add your OpenAI API key here
+const OPENAI_API_KEY = "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";
 
 function Section({
   title,
@@ -78,6 +88,142 @@ function Section({
           </View>
         )}
       </View>
+    </View>
+  );
+}
+
+function AISummaryCard({ timeSeries }: { timeSeries: TimeSeriesPoint[] | null }) {
+  const [aiState, setAiState] = useState<AISummary>({
+    loading: false,
+    error: null,
+    summary: null,
+  });
+
+  useEffect(() => {
+    if (!timeSeries || timeSeries.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setAiState({ loading: true, error: null, summary: null });
+
+      try {
+        // Find the data point closest to current time
+        const now = new Date();
+        const closest = timeSeries.reduce((prev, curr) => {
+          const prevDiff = Math.abs(new Date(prev.time).getTime() - now.getTime());
+          const currDiff = Math.abs(new Date(curr.time).getTime() - now.getTime());
+          return currDiff < prevDiff ? curr : prev;
+        });
+
+        const currentConditions = {
+          time: new Date(closest.time).toLocaleString(),
+          sea_level_height_msl: closest.sea_level_height_msl,
+          swell_wave_height: closest.swell_wave_height,
+          swell_wave_direction: closest.swell_wave_direction,
+          swell_wave_period: closest.swell_wave_period,
+        };
+
+        const prompt = `You are a marine safety advisor. Analyze the following current marine conditions and provide a brief assessment (2-3 sentences) on the safety for fishing activities. Be concise and practical.
+
+Current Marine Conditions:
+- Sea Level Height (MSL): ${currentConditions.sea_level_height_msl?.toFixed(2) ?? "N/A"} m
+- Swell Wave Height: ${currentConditions.swell_wave_height?.toFixed(2) ?? "N/A"} m
+- Swell Wave Direction: ${currentConditions.swell_wave_direction?.toFixed(0) ?? "N/A"}°
+- Swell Wave Period: ${currentConditions.swell_wave_period?.toFixed(1) ?? "N/A"} seconds
+- Time: ${currentConditions.time}
+
+Provide a safety rating (Safe, Moderate, or Unsafe) and brief reasoning.`;
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a marine safety expert who provides concise, actionable advice about fishing conditions based on marine data.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            max_tokens: 150,
+            temperature: 0.7,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const summary = data.choices?.[0]?.message?.content?.trim();
+
+        if (!cancelled) {
+          setAiState({
+            loading: false,
+            error: null,
+            summary: summary || "No summary available.",
+          });
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setAiState({
+            loading: false,
+            error: e?.message ?? "Failed to generate AI summary.",
+            summary: null,
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [timeSeries]);
+
+  return (
+    <View className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
+      <View className="mb-3 flex-row items-center">
+        <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+          <Ionicons name="sparkles" size={20} color="#2563eb" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-base font-bold text-gray-900">AI Safety Assessment</Text>
+          <Text className="text-xs text-gray-600">Powered by OpenAI</Text>
+        </View>
+      </View>
+
+      {aiState.loading && (
+        <View className="flex-row items-center py-4">
+          <ActivityIndicator size="small" color="#2563eb" />
+          <Text className="ml-3 text-sm text-gray-600">Analyzing conditions...</Text>
+        </View>
+      )}
+
+      {aiState.error && (
+        <View className="rounded-lg border border-red-200 bg-red-50 p-3">
+          <Text className="text-sm font-semibold text-red-800">Analysis failed</Text>
+          <Text className="mt-1 text-xs text-red-700">{aiState.error}</Text>
+        </View>
+      )}
+
+      {aiState.summary && (
+        <View className="rounded-lg bg-white p-3">
+          <Text className="text-sm leading-relaxed text-gray-800">{aiState.summary}</Text>
+        </View>
+      )}
+
+      {!aiState.loading && !aiState.error && !aiState.summary && (
+        <Text className="text-sm text-gray-500">No data available for analysis.</Text>
+      )}
     </View>
   );
 }
@@ -178,89 +324,90 @@ export default function MarineScreen() {
     };
   }, [timeSeries]);
 
-  // Layout math so everything fits without scrolling.
-  // Header: ~64, outer padding: 12+12, grid gaps: 10, 2 rows => split remaining.
-  const headerHeight = 64;
-  const outerPadding = 24;
-  const gridGap = 10;
-  const available = Math.max(0, windowHeight - headerHeight - outerPadding - gridGap);
-  const cardHeight = Math.floor(available / 2);
-  const chartHeight = Math.max(90, cardHeight - 44); // subtract title/min-max row and padding
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "bottom"]}>
-      <View className="flex-1 px-3 pb-3">
-        <View className="h-16 justify-center">
-          <Text className="text-xl font-bold text-gray-900" numberOfLines={1}>
-            Marine hourly
-          </Text>
-          <Text className="mt-0.5 text-xs text-gray-600" numberOfLines={1}>
-            {locationName} · {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
-            {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
-          </Text>
+      <ScrollView className="flex-1">
+        <View className="px-3 pb-3">
+          {/* Header */}
+          <View className="h-16 justify-center">
+            <Text className="text-xl font-bold text-gray-900" numberOfLines={1}>
+              Marine hourly
+            </Text>
+            <Text className="mt-0.5 text-xs text-gray-600" numberOfLines={1}>
+              {locationName} · {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
+              {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
+            </Text>
+          </View>
+
+          {loading && (
+            <View className="py-20 items-center justify-center">
+              <ActivityIndicator />
+              <Text className="mt-3 text-sm text-gray-600">Fetching Open‑Meteo…</Text>
+            </View>
+          )}
+
+          {!loading && error && (
+            <View className="mt-2 rounded-2xl border border-red-200 bg-red-50 p-4">
+              <Text className="font-semibold text-red-800">Couldn't load marine data</Text>
+              <Text className="mt-1 text-red-700">{error}</Text>
+            </View>
+          )}
+
+          {!loading && !error && timeSeries && (
+            <View style={{ gap: 12 }}>
+              {/* AI Summary Card */}
+              <AISummaryCard timeSeries={timeSeries} />
+
+              {/* Charts Grid */}
+              {graphData && (
+                <>
+                  <View className="flex-row" style={{ gap: 10 }}>
+                    <View className="flex-1">
+                      <Section
+                        title="Sea level height (MSL)"
+                        unit="m"
+                        points={graphData.sea}
+                        color="#2563eb"
+                        height={160}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Section
+                        title="Swell wave height"
+                        unit="m"
+                        points={graphData.swellH}
+                        color="#16a34a"
+                        height={160}
+                      />
+                    </View>
+                  </View>
+
+                  <View className="flex-row" style={{ gap: 10 }}>
+                    <View className="flex-1">
+                      <Section
+                        title="Swell wave direction"
+                        unit="°"
+                        points={graphData.swellDir}
+                        color="#f97316"
+                        height={160}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Section
+                        title="Swell wave period"
+                        unit="s"
+                        points={graphData.swellP}
+                        color="#7c3aed"
+                        height={160}
+                      />
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
         </View>
-
-        {loading && (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator />
-            <Text className="mt-3 text-sm text-gray-600">Fetching Open‑Meteo…</Text>
-          </View>
-        )}
-
-        {!loading && error && (
-          <View className="mt-2 rounded-2xl border border-red-200 bg-red-50 p-4">
-            <Text className="font-semibold text-red-800">Couldn’t load marine data</Text>
-            <Text className="mt-1 text-red-700">{error}</Text>
-          </View>
-        )}
-
-        {!loading && !error && graphData && (
-          <View className="flex-1">
-            <View className="flex-1 flex-row" style={{ gap: gridGap }}>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Sea level height (MSL)"
-                  unit="m"
-                  points={graphData.sea}
-                  color="#2563eb"
-                  height={chartHeight}
-                />
-              </View>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave height"
-                  unit="m"
-                  points={graphData.swellH}
-                  color="#16a34a"
-                  height={chartHeight}
-                />
-              </View>
-            </View>
-            <View style={{ height: gridGap }} />
-            <View className="flex-1 flex-row" style={{ gap: gridGap }}>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave direction"
-                  unit="°"
-                  points={graphData.swellDir}
-                  color="#f97316"
-                  height={chartHeight}
-                />
-              </View>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave period"
-                  unit="s"
-                  points={graphData.swellP}
-                  color="#7c3aed"
-                  height={chartHeight}
-                />
-              </View>
-            </View>
-          </View>
-        )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
-

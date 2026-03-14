@@ -18,7 +18,10 @@ export default function RootLayout() {
         <Stack.Screen name="login" />
         <Stack.Screen name="forgot-password" />
         <Stack.Screen name="register" />
-        <Stack.Screen name="marine" />
+        <Stack.Screen
+          name="marine"
+          options={{ gestureEnabled: false, fullScreenGestureEnabled: false }}
+        />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </GestureHandlerRootView>

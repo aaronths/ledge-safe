@@ -1,7 +1,16 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { fetchWeatherApi } from "openmeteo";
-import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Text, useWindowDimensions, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { type GraphPoint } from "react-native-graph";
 import { LineChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -13,68 +22,113 @@ type TimeSeriesPoint = {
   swell_wave_period: number | null;
 };
 
-type ChartPoint = { value: number; label?: string };
+function formatTimeLabel(date: Date): string {
+  const h = date.getHours();
+  const m = date.getMinutes();
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+}
 
 function Section({
   title,
   unit,
   points,
   color,
-  height,
+  width,
+  fixedYAxis,
 }: {
   title: string;
   unit: string;
-  points: ChartPoint[];
+  points: GraphPoint[];
   color: string;
-  height: number;
+  width: number;
+  fixedYAxis?: {
+    maxValue: number;
+    noOfSections: number;
+    mostNegativeValue?: number;
+    noOfSectionsBelowXAxis?: number;
+  };
 }) {
   const { min, max } = useMemo(() => {
-    if (points.length === 0) return { min: null as number | null, max: null as number | null };
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
+    if (points.length === 0)
+      return { min: null as number | null, max: null as number | null };
+    let minVal = Number.POSITIVE_INFINITY;
+    let maxVal = Number.NEGATIVE_INFINITY;
     for (const p of points) {
-      if (p.value < min) min = p.value;
-      if (p.value > max) max = p.value;
+      if (p.value < minVal) minVal = p.value;
+      if (p.value > maxVal) maxVal = p.value;
     }
-    return { min, max };
+    return { min: minVal, max: maxVal };
   }, [points]);
 
+  const lineData = useMemo(
+    () =>
+      points.map((p) => {
+        const d = p.date;
+        const is3hr = d.getHours() % 3 === 0 && d.getMinutes() === 0;
+        return {
+          value: p.value,
+          label: is3hr ? formatTimeLabel(d) : "",
+          showXAxisIndex: is3hr,
+        };
+      }),
+    [points],
+  );
+
+  const chartWidth = width - 44;
+  const spacing = lineData.length > 1 ? chartWidth / (lineData.length - 1) : 0;
+
   return (
-    <View className="rounded-2xl border border-gray-200 bg-white p-3">
-      <View className="mb-2 flex-row items-baseline justify-between">
-        <Text className="flex-1 pr-2 text-sm font-semibold text-gray-900" numberOfLines={1}>
+    <View style={[styles.section, { width }]}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle} numberOfLines={1}>
           {title}
         </Text>
         {min !== null && max !== null ? (
-          <Text className="text-xs text-gray-500">
+          <Text style={styles.sectionMeta}>
             min {min.toFixed(2)} {unit} · max {max.toFixed(2)} {unit}
           </Text>
         ) : (
-          <Text className="text-xs text-gray-400">No data</Text>
+          <Text style={styles.sectionMetaEmpty}>No data</Text>
         )}
       </View>
-
-      <View style={{ height }}>
-        {points.length > 0 ? (
+      <View style={styles.chartContainer}>
+        {lineData.length > 0 ? (
           <LineChart
-            data={points}
-            areaChart
-            curved
+            data={lineData}
             color={color}
             thickness={2}
             hideDataPoints
-            hideRules
-            initialSpacing={0}
-            xAxisLabelTexts={points.map((p) => p.label ?? "")}
-            xAxisLabelsVerticalShift={6}
-            xAxisLabelTextStyle={{ fontSize: 10, color: "#64748b" }}
-            yAxisTextStyle={{ fontSize: 10, color: "#64748b" }}
-            yAxisColor="#e5e7eb"
-            xAxisColor="#e5e7eb"
+            parentWidth={chartWidth}
+            width={chartWidth}
+            spacing={Math.max(8, Math.min(spacing, 40))}
+            initialSpacing={8}
+            endSpacing={24}
+            height={CHART_HEIGHT}
+            noOfSections={fixedYAxis?.noOfSections ?? 4}
+            noOfSectionsBelowXAxis={fixedYAxis?.noOfSectionsBelowXAxis}
+            maxValue={fixedYAxis?.maxValue}
+            mostNegativeValue={fixedYAxis?.mostNegativeValue}
+            showFractionalValues={false}
+            roundToDigits={0}
+            yAxisLabelSuffix={` ${unit}`}
+            yAxisColor="#475569"
+            yAxisTextStyle={{ color: "#9ca3af", fontSize: 10 }}
+            xAxisColor="#475569"
+            xAxisLabelTexts={lineData.map((d) => d.label)}
+            xAxisLabelTextStyle={{
+              color: "#9ca3af",
+              fontSize: 10,
+              width: 44,
+              textAlign: "center",
+              marginLeft: -22,
+            }}
+            rulesColor="rgba(71,85,105,0.3)"
+            isAnimated
+            disableScroll
           />
         ) : (
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-sm text-gray-500">No data available.</Text>
+          <View style={styles.emptyChart}>
+            <Text style={styles.emptyChartText}>No data available.</Text>
           </View>
         )}
       </View>
@@ -82,16 +136,96 @@ function Section({
   );
 }
 
+const CHART_HEIGHT = 200;
+
+const styles = StyleSheet.create({
+  section: {
+    paddingVertical: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    flex: 1,
+    paddingRight: 8,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#e5e7eb",
+  },
+  sectionMeta: {
+    fontSize: 11,
+    color: "#9ca3af",
+  },
+  sectionMetaEmpty: {
+    fontSize: 11,
+    color: "#64748b",
+  },
+  chartContainer: {
+    height: CHART_HEIGHT + 40,
+  },
+  graph: {
+    width: "100%",
+    height: 100,
+  },
+  emptyChart: {
+    height: CHART_HEIGHT + 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyChartText: {
+    fontSize: 14,
+    color: "#9ca3af",
+  },
+  toggleRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 8,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#1e3a5f",
+    backgroundColor: "#0f1f3d",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toggleButtonActive: {
+    backgroundColor: "#c9a84c",
+    borderColor: "#c9a84c",
+  },
+  toggleText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#e5e7eb",
+  },
+  toggleTextActive: {
+    color: "#0f1f3d",
+  },
+});
+
+const HORIZONTAL_PADDING = 32;
+
 export default function MarineScreen() {
-  const params = useLocalSearchParams<{ lat?: string; lng?: string; name?: string }>();
+  const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = Math.max(200, windowWidth - HORIZONTAL_PADDING);
+  const params = useLocalSearchParams<{
+    lat?: string;
+    lng?: string;
+    name?: string;
+  }>();
   const lat = Number(params.lat);
   const lng = Number(params.lng);
   const locationName = params.name ?? "Selected location";
-  const { height: windowHeight } = useWindowDimensions();
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[] | null>(null);
+  const [mode, setMode] = useState<"swell" | "sea" | "period">("swell");
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +243,12 @@ export default function MarineScreen() {
         const openMeteoParams = {
           latitude: lat,
           longitude: lng,
-          hourly: ["sea_level_height_msl", "swell_wave_height", "swell_wave_direction", "swell_wave_period"],
+          hourly: [
+            "sea_level_height_msl",
+            "swell_wave_height",
+            "swell_wave_direction",
+            "swell_wave_period",
+          ],
           forecast_days: 1,
         };
         const url = "https://marine-api.open-meteo.com/v1/marine";
@@ -121,9 +260,18 @@ export default function MarineScreen() {
         const hourly = response.hourly();
         if (!hourly) throw new Error("No hourly data returned.");
 
-        const timeCount = (Number(hourly.timeEnd()) - Number(hourly.time())) / hourly.interval();
-        const time = Array.from({ length: timeCount }, (_, i) =>
-          new Date((Number(hourly.time()) + i * hourly.interval() + utcOffsetSeconds) * 1000)
+        const timeCount =
+          (Number(hourly.timeEnd()) - Number(hourly.time())) /
+          hourly.interval();
+        const time = Array.from(
+          { length: timeCount },
+          (_, i) =>
+            new Date(
+              (Number(hourly.time()) +
+                i * hourly.interval() +
+                utcOffsetSeconds) *
+                1000,
+            ),
         );
 
         const sea = hourly.variables(0)?.valuesArray() ?? null;
@@ -142,7 +290,10 @@ export default function MarineScreen() {
         if (!cancelled) {
           setTimeSeries(jsonSeries);
           // requested: log full time series in JSON format
-          console.log("Open-Meteo marine hourly time series:", JSON.stringify(jsonSeries, null, 2));
+          console.log(
+            "Open-Meteo marine hourly time series:",
+            JSON.stringify(jsonSeries, null, 2),
+          );
         }
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to fetch marine data.");
@@ -159,16 +310,16 @@ export default function MarineScreen() {
   const graphData = useMemo(() => {
     if (!timeSeries) return null;
 
-    const toPoints = (key: keyof Omit<TimeSeriesPoint, "time">): ChartPoint[] =>
+    const toPoints = (key: keyof Omit<TimeSeriesPoint, "time">): GraphPoint[] =>
       timeSeries
-        .map((p, index) => {
+        .map((p) => {
           const v = p[key];
           if (typeof v !== "number" || !Number.isFinite(v)) return null;
-          // Label every 3rd hour for readability
-          const label = index % 3 === 0 ? new Date(p.time).getHours().toString() : "";
-          return { value: v, label };
+          const d = new Date(p.time);
+          if (!Number.isFinite(d.getTime())) return null;
+          return { date: d, value: v };
         })
-        .filter(Boolean) as ChartPoint[];
+        .filter((x): x is GraphPoint => x != null);
 
     return {
       sea: toPoints("sea_level_height_msl"),
@@ -178,89 +329,183 @@ export default function MarineScreen() {
     };
   }, [timeSeries]);
 
-  // Layout math so everything fits without scrolling.
-  // Header: ~64, outer padding: 12+12, grid gaps: 10, 2 rows => split remaining.
-  const headerHeight = 64;
-  const outerPadding = 24;
-  const gridGap = 10;
-  const available = Math.max(0, windowHeight - headerHeight - outerPadding - gridGap);
-  const cardHeight = Math.floor(available / 2);
-  const chartHeight = Math.max(90, cardHeight - 44); // subtract title/min-max row and padding
-
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "bottom"]}>
-      <View className="flex-1 px-3 pb-3">
-        <View className="h-16 justify-center">
-          <Text className="text-xl font-bold text-gray-900" numberOfLines={1}>
-            Marine hourly
-          </Text>
-          <Text className="mt-0.5 text-xs text-gray-600" numberOfLines={1}>
-            {locationName} · {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
-            {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
-          </Text>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: "#0a1628" }}
+      edges={["top", "bottom"]}
+    >
+      <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 12 }}>
+        <View
+          style={{
+            height: 56,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={{
+              borderRadius: 999,
+              padding: 8,
+              backgroundColor: "#1e293b",
+            }}
+          >
+            <Ionicons name="chevron-back" size={22} color="#e5e7eb" />
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "700",
+                color: "#e5e7eb",
+              }}
+              numberOfLines={1}
+            >
+              {locationName}
+            </Text>
+            <Text style={{ fontSize: 11, color: "#9ca3af" }} numberOfLines={1}>
+              Conditions Next 24hrs ·{" "}
+              {Number.isFinite(lat) ? lat.toFixed(5) : "—"},{" "}
+              {Number.isFinite(lng) ? lng.toFixed(5) : "—"}
+            </Text>
+          </View>
         </View>
 
-        {loading && (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator />
-            <Text className="mt-3 text-sm text-gray-600">Fetching Open‑Meteo…</Text>
-          </View>
-        )}
+        <View style={styles.toggleRow}>
+          <Pressable
+            onPress={() => setMode("swell")}
+            style={[
+              styles.toggleButton,
+              mode === "swell" && styles.toggleButtonActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                mode === "swell" && styles.toggleTextActive,
+              ]}
+            >
+              Swell
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("sea")}
+            style={[
+              styles.toggleButton,
+              mode === "sea" && styles.toggleButtonActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                mode === "sea" && styles.toggleTextActive,
+              ]}
+            >
+              Sea level height
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("period")}
+            style={[
+              styles.toggleButton,
+              mode === "period" && styles.toggleButtonActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.toggleText,
+                mode === "period" && styles.toggleTextActive,
+              ]}
+            >
+              Wave period
+            </Text>
+          </Pressable>
+        </View>
 
-        {!loading && error && (
-          <View className="mt-2 rounded-2xl border border-red-200 bg-red-50 p-4">
-            <Text className="font-semibold text-red-800">Couldn’t load marine data</Text>
-            <Text className="mt-1 text-red-700">{error}</Text>
-          </View>
-        )}
+        <View style={{ flex: 1, marginTop: 8 }}>
+          {loading && (
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ActivityIndicator color="#c9a84c" />
+              <Text style={{ marginTop: 12, fontSize: 14, color: "#e5e7eb" }}>
+                Calculating Location Safety
+              </Text>
+            </View>
+          )}
 
-        {!loading && !error && graphData && (
-          <View className="flex-1">
-            <View className="flex-1 flex-row" style={{ gap: gridGap }}>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Sea level height (MSL)"
-                  unit="m"
-                  points={graphData.sea}
-                  color="#2563eb"
-                  height={chartHeight}
-                />
-              </View>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave height"
-                  unit="m"
-                  points={graphData.swellH}
-                  color="#16a34a"
-                  height={chartHeight}
-                />
-              </View>
+          {!loading && error && (
+            <View
+              style={{
+                marginTop: 16,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "#b91c1c",
+                backgroundColor: "#450a0a",
+                padding: 16,
+              }}
+            >
+              <Text
+                style={{ fontWeight: "600", color: "#fecaca", marginBottom: 4 }}
+              >
+                Couldn’t load marine data
+              </Text>
+              <Text style={{ color: "#fecaca", fontSize: 13 }}>{error}</Text>
             </View>
-            <View style={{ height: gridGap }} />
-            <View className="flex-1 flex-row" style={{ gap: gridGap }}>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave direction"
-                  unit="°"
-                  points={graphData.swellDir}
-                  color="#f97316"
-                  height={chartHeight}
-                />
-              </View>
-              <View className="flex-1" style={{ height: cardHeight }}>
-                <Section
-                  title="Swell wave period"
-                  unit="s"
-                  points={graphData.swellP}
-                  color="#7c3aed"
-                  height={chartHeight}
-                />
-              </View>
+          )}
+
+          {!loading && !error && graphData && (
+            <View style={{ flex: 1 }}>
+              {mode === "swell" && (
+                <View style={{ flex: 1 }}>
+                  <Section
+                    title="Swell wave height"
+                    unit="m"
+                    points={graphData.swellH}
+                    color="#c9a84c"
+                    width={chartWidth}
+                    fixedYAxis={{ maxValue: 5, noOfSections: 5 }}
+                  />
+                </View>
+              )}
+              {mode === "sea" && (
+                <View style={{ flex: 1 }}>
+                  <Section
+                    title="Sea level height (MSL)"
+                    unit="m"
+                    points={graphData.sea}
+                    color="#38bdf8"
+                    width={chartWidth}
+                    fixedYAxis={{
+                      maxValue: 3,
+                      noOfSections: 3,
+                      mostNegativeValue: -1,
+                      noOfSectionsBelowXAxis: 1,
+                    }}
+                  />
+                </View>
+              )}
+              {mode === "period" && (
+                <View style={{ flex: 1 }}>
+                  <Section
+                    title="Swell wave period"
+                    unit="s"
+                    points={graphData.swellP}
+                    color="#a855f7"
+                    width={chartWidth}
+                  />
+                </View>
+              )}
             </View>
-          </View>
-        )}
+          )}
+        </View>
       </View>
     </SafeAreaView>
   );
 }
-

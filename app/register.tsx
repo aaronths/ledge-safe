@@ -1,6 +1,10 @@
 import { type Href, useRouter } from "expo-router";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,15 +13,50 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { auth, db } from "../firebase/firebaseConfig";
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    // TODO: Add real authentication
-    router.replace("/(tabs)/map" as Href);
+  const handleRegister = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing details", "Please enter your email and password.");
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert("Weak password", "Password must be at least 6 characters long.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+
+
+      const user = userCredential.user;
+
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email,
+        createdAt: serverTimestamp(),
+      });
+
+      router.replace("/(tabs)/map" as Href);
+    } catch (error: any) {
+      Alert.alert("Sign up failed", error?.message ?? "Unknown error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignIn = () => {
@@ -51,6 +90,7 @@ export default function LoginScreen() {
               placeholder="you@example.com"
               placeholderTextColor="#9ca3af"
               value={email}
+              editable={!isLoading}
             />
           </View>
 
@@ -63,31 +103,35 @@ export default function LoginScreen() {
               autoComplete="password"
               className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 text-base text-gray-900"
               onChangeText={setPassword}
-              placeholder="••••••••"
+              placeholder="At least 6 characters"
               placeholderTextColor="#9ca3af"
               secureTextEntry
               value={password}
+              editable={!isLoading}
             />
           </View>
 
-          <Pressable onPress={() => {}} className="mt-1 self-end">
-            <Text className="text-sm text-blue-600">Forgot password?</Text>
-          </Pressable>
-
           <Pressable
-            onPress={handleLogin}
-            className="mt-4 rounded-xl bg-blue-600 py-3.5 active:opacity-90"
+            onPress={handleRegister}
+            disabled={isLoading}
+            className={`mt-4 rounded-xl py-3.5 active:opacity-90 ${
+              isLoading ? "bg-blue-400" : "bg-blue-600"
+            }`}
           >
-            <Text className="text-center text-base font-semibold text-white">
-              Sign in
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text className="text-center text-base font-semibold text-white">
+                Sign up
+              </Text>
+            )}
           </Pressable>
         </View>
 
         <View className="mt-8 flex-row justify-center gap-1">
           <Text className="text-gray-600">Already have an account?</Text>
           <Pressable onPress={handleSignIn}>
-            <Text className="font-medium text-blue-600">Sign up</Text>
+            <Text className="font-medium text-blue-600">Sign in</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

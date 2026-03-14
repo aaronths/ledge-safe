@@ -1,6 +1,9 @@
 import { type Href, useRouter } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,15 +12,47 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { auth } from "../firebase/firebaseConfig";
 
 export default function LoginScreen() {
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    // TODO: Add real authentication
-    router.replace("/(tabs)/map" as Href);
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing details", "Please enter your email and password.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      router.replace("/(tabs)/map" as Href);
+    } catch (error: any) {
+      let message = "Something went wrong. Please try again.";
+
+      if (error.code === "auth/invalid-email") {
+        message = "That email address is not valid.";
+      } else if (error.code === "auth/invalid-credential") {
+        message = "Incorrect email or password.";
+      } else if (error.code === "auth/user-not-found") {
+        message = "No account was found for that email.";
+      } else if (error.code === "auth/wrong-password") {
+        message = "Incorrect email or password.";
+      } else if (error.code === "auth/too-many-requests") {
+        message = "Too many failed attempts. Please try again later.";
+      }
+
+      Alert.alert("Sign in failed", message);
+      console.log("Login error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUp = () => {
@@ -51,6 +86,7 @@ export default function LoginScreen() {
               placeholder="you@example.com"
               placeholderTextColor="#9ca3af"
               value={email}
+              editable={!isLoading}
             />
           </View>
 
@@ -67,6 +103,7 @@ export default function LoginScreen() {
               placeholderTextColor="#9ca3af"
               secureTextEntry
               value={password}
+              editable={!isLoading}
             />
           </View>
 
@@ -76,11 +113,18 @@ export default function LoginScreen() {
 
           <Pressable
             onPress={handleLogin}
-            className="mt-4 rounded-xl bg-blue-600 py-3.5 active:opacity-90"
+            disabled={isLoading}
+            className={`mt-4 rounded-xl py-3.5 active:opacity-90 ${
+              isLoading ? "bg-blue-400" : "bg-blue-600"
+            }`}
           >
-            <Text className="text-center text-base font-semibold text-white">
-              Sign in
-            </Text>
+            {isLoading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text className="text-center text-base font-semibold text-white">
+                Sign in
+              </Text>
+            )}
           </Pressable>
         </View>
 

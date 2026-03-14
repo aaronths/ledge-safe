@@ -45,9 +45,9 @@ export default function ProfileScreen() {
             justifyContent: "center",
             marginBottom: 14,
             borderWidth: 2,
-            borderColor: "#c9a84c",
+            borderColor: "#d8b372",
           }}>
-            <Ionicons name="person" size={36} color="#c9a84c" />
+            <Ionicons name="person" size={36} color="#d8b372" />
           </View>
           <Text style={{ color: "#e2e8f0", fontSize: 17, fontWeight: "700" }}>
             {user?.email}
@@ -68,7 +68,7 @@ export default function ProfileScreen() {
           overflow: "hidden",
         }}>
           <Text style={{
-            color: "#c9a84c",
+            color: "#d8b372",
             fontSize: 11,
             fontWeight: "600",
             textTransform: "uppercase",
@@ -96,7 +96,7 @@ export default function ProfileScreen() {
                 gap: 14,
               }}
             >
-              <Ionicons name={row.icon} size={18} color="#c9a84c" />
+              <Ionicons name={row.icon} size={18} color="#d8b372" />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>{row.label}</Text>
                 <Text style={{ color: "#e2e8f0", fontSize: 14 }}>{row.value}</Text>
@@ -112,7 +112,7 @@ export default function ProfileScreen() {
             backgroundColor: pressed ? "#13284a" : "#0f1f3d",
             borderRadius: 16,
             borderWidth: 1,
-            borderColor: pressed ? "#c9a84c" : "#1e3a5f",
+            borderColor: pressed ? "#d8b372" : "#1e3a5f",
             paddingVertical: 16,
             paddingHorizontal: 18,
             flexDirection: "row",
@@ -133,7 +133,7 @@ export default function ProfileScreen() {
                 marginRight: 12,
               }}
             >
-              <Ionicons name="log-out-outline" size={18} color="#c9a84c" />
+              <Ionicons name="log-out-outline" size={18} color="#d8b372" />
             </View>
 
             <View>
